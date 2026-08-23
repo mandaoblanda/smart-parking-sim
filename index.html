@@ -900,6 +900,29 @@ function createSession(plate, vehicle) {
   renderMap(); renderSessions();
 }
 
+/* PHOTOCELL */
+function setPhotocell(active) {
+  const svg = document.querySelector('#barrier-arm + * ~ * circle, svg circle[stroke="var(--green)"]');
+  // Nađi sve circle i line elemente fotoćelije u SVG
+  const barrierSVG = document.querySelector('svg');
+  if (!barrierSVG) return;
+  // Fotoćelija: zeleni elementi (krugovi i linija)
+  barrierSVG.querySelectorAll('circle[stroke="var(--green)"], line[stroke="var(--green)"]').forEach(el => {
+    el.style.opacity = active ? '1' : '0.2';
+    el.style.stroke  = active ? 'var(--green)' : 'var(--muted)';
+  });
+  const label = document.querySelector('.card-body .text-muted');
+  // Ažuriraj tekst fotoćelije ispod rampe
+  const muted = document.querySelectorAll('.card-body .text-muted');
+  muted.forEach(el => {
+    if (el.textContent.includes('IR fotoćelija')) {
+      el.innerHTML = active
+        ? 'IR fotoćelija: <span style="color:var(--green)">aktivna</span>'
+        : 'IR fotoćelija: <span style="color:var(--red)">neaktivna</span>';
+    }
+  });
+}
+
 /* BARRIER */
 let barrierOpen=false;
 function openBarrier(failOpen=false) {
@@ -1267,10 +1290,13 @@ function triggerOutage() {
       addLog('SYSTEM_OFFLINE | UPS prazna | servisi ugašeni','err','log-body');
       renderSessions();
 
-      // Fail-open: otvori rampu i ostavi otvorenu
+      // Fail-open: otvori rampu i ostavi otvorenu, fotoćelija neaktivna
       openBarrier(true);
+      setPhotocell(false);
       addLog('BARRIER_FAIL_OPEN | bez napajanja → rampa ostaje otvorena','warn','log-body');
+      addLog('PHOTOCELL | neaktivna | nema napajanja','warn','log-body');
       oLog('BARRIER_FAIL_OPEN | mehanički fail-open aktiviran','warn');
+      oLog('PHOTOCELL_OFF | nema napajanja | IR zrak ugašen','warn');
 
       // Sve kamere offline
       DB.cameras.forEach(c=>{ c.status='offline'; c.failure_type='no power'; });
@@ -1332,9 +1358,12 @@ function triggerPlanned() {
       updateSysBadge(); renderMap();
       oLog('SYSTEM_NIGHT | billing=FROZEN | cameras=RECORDING | AI_ANALYSIS=OFF','warn');
       addLog('SYSTEM_NIGHT | noćni mode aktivan','warn','log-body');
-      // ANPR i dalje radi tokom noćnog moda (rampa funkcioniše)
-      // ali sesije su zamrznute — dodaj vizuelnu napomenu
-      addLog('ANPR | rampa operativna | sesije zamrznute do jutra','warn','log-body');
+      // Noćni režim: rampa otvorena, fotoćelija neaktivna
+      openBarrier(true);
+      addLog('BARRIER_OPEN | noćni mode → rampa otvorena za slobodan izlaz','warn','log-body');
+      oLog('BARRIER_OPEN | noćni mode | slobodan prolaz do jutra','warn');
+      setPhotocell(false);
+      addLog('ANPR | sesije zamrznute do jutra | jutarnji scan u 07:00','warn','log-body');
       renderSessions();
     }},
   ];
@@ -1361,7 +1390,12 @@ function restorePower() {
     {t:800,  fn:()=>{ oLog('KERNEL_BOOT | montiranje filesystem...','info'); setOutageUI('Sistem se podiže','Kernel boot...','outage-warn','var(--amber)','tag-y','BOOT'); }},
     {t:1400, fn:()=>{ oLog('SYSTEMD_START | pokretanje servisa...','info'); }},
     {t:1900, fn:()=>{ oLog('parking-mqtt.service → STARTED','ok'); }},
-    {t:2300, fn:()=>{ oLog('parking-sensors.service → STARTED','ok'); addLog('SENSORS_ONLINE | senzori aktivni','ok','log-body'); }},
+    {t:2300, fn:()=>{
+      oLog('parking-sensors.service → STARTED','ok');
+      addLog('SENSORS_ONLINE | senzori aktivni','ok','log-body');
+      setPhotocell(true);
+      addLog('PHOTOCELL | IR zrak aktivan','ok','log-body');
+    }},
     {t:2700, fn:()=>{ oLog('parking-watchdog.service → STARTED | interval:8s','ok'); }},
     {t:3100, fn:()=>{
       oLog('parking-sync.service → STARTED | cloud sync aktivan','ok');
@@ -1540,7 +1574,8 @@ function runRecovery() {
       updateSysBadge(); renderMap(); renderSessions();
       oLog('MORNING_RECOVERY_DONE | sistem u potpunosti operativan','ok');
       addLog('RECOVERY_DONE | normalan rad','ok','log-body');
-      // Zatvori rampu (bila otvorena fail-open)
+      // Vrati fotoćeliju i zatvori rampu
+      setPhotocell(true);
       barrierOpen=false;
       document.getElementById('barrier-arm').classList.remove('open');
       document.getElementById('barrier-dot').style.background='var(--red)';

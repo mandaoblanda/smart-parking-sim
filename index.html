@@ -1528,10 +1528,14 @@ function runRecovery() {
     }},
     {t:7000, fn:()=>{
       outageActive=false; SYS.power=true; SYS.planned=false;
+      // Sve kamere nazad u normalan online mod
+      DB.cameras.forEach(c=>{ c.status='online'; delete c.failure_type; });
+      SYS.offlineCams=[];
+      renderCamGrid();
       document.getElementById('btn-outage').disabled=false;
       document.getElementById('btn-planned').disabled=false;
-      document.getElementById('btn-restore').disabled=true;  // nema nestanka → restore ne treba
-      document.getElementById('btn-recover').disabled=true;  // nije noćni mod → recover ne treba
+      document.getElementById('btn-restore').disabled=true;
+      document.getElementById('btn-recover').disabled=true;
       setOutageUI('Sistem aktivan','Jutarnji recovery završen — normalan rad','outage-ok','var(--green)','tag-g','NORMALAN RAD');
       updateSysBadge(); renderMap(); renderSessions();
       oLog('MORNING_RECOVERY_DONE | sistem u potpunosti operativan','ok');

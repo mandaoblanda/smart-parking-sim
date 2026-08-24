@@ -742,8 +742,11 @@ function handleDrop(e) {
   if(f&&f.type.startsWith('image/')) readImg(f);
 }
 function handleFile(e) { const f=e.target.files[0]; if(f) readImg(f); }
+let imageMediaType = 'image/jpeg';
 function readImg(f) {
   const r=new FileReader();
+  // Detektuj pravi format fajla
+  imageMediaType = f.type && f.type.startsWith('image/') ? f.type : 'image/jpeg';
   r.onload=ev=>{
     imageData=ev.target.result.split(',')[1];
     document.getElementById('upload-zone').innerHTML=
@@ -790,8 +793,8 @@ async function runANPR(knownPlate, knownConf, knownStatus) {
         body:JSON.stringify({
           model:'claude-sonnet-4-6', max_tokens:256,
           messages:[{role:'user',content:[
-            {type:'image',source:{type:'base64',media_type:'image/jpeg',data:imageData}},
-            {type:'text',text:'Pronađi broj registarske tablice vozila na ovoj slici. Odgovori ISKLJUČIVO u JSON formatu bez ikakvog drugog teksta:\n{"plate":"XX 000 XX","confidence":0.95}\nAko ne vidiš tablicu vozila: {"plate":null,"confidence":0,"note":"nije tablica"}'}
+            {type:'image',source:{type:'base64',media_type:imageMediaType,data:imageData}},
+            {type:'text',text:'Na ovoj slici se nalazi registarska tablica vozila. Pročitaj slova i brojeve sa tablice. Srpske tablice imaju format: 2 slova + 3-4 broja + 2 slova (npr. BG 512 TX ili NS 123 AB). Odgovori ISKLJUČIVO u JSON formatu, bez ikakvog drugog teksta, objašnjenja ili formatiranja:\n{"plate":"BG 512 TX","confidence":0.97}\nAko ne možeš da pročitaš tablicu: {"plate":null,"confidence":0,"note":"razlog"}'}
           ]}]
         })
       });

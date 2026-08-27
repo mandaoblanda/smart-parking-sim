@@ -175,6 +175,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
     <button class="tab-btn active" onclick="setView('anpr',this)">ANPR · Ulaz/Izlaz</button>
     <button class="tab-btn" onclick="setView('camera',this)">Kamera analitika</button>
     <button class="tab-btn" onclick="setView('outage',this)">Nestanak struje</button>
+    <button class="tab-btn" onclick="setView('attacks',this)">Detekcija napada na mrežu</button>
   </div>
   <div class="sys-badge">
     <div id="sys-dot" class="on"></div>
@@ -1615,6 +1616,529 @@ DB.sessions.filter(s=>s.status==='active').forEach(s=>
 
 // Live duration update
 setInterval(()=>{ renderSessions(); renderMap(); }, 30000);
+</script>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!-- VIEW 4: DETEKCIJA NAPADA NA MREŽU                      -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="view" id="view-attacks">
+  <div style="padding-top:14px">
+
+    <!-- UVOD + ANALIZA RANJIVOSTI -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-head">
+        <div class="card-dot" style="background:var(--red)"></div>
+        <div class="card-title">Analiza ranjivosti sistema</div>
+        <span class="tag tag-r" style="margin-left:auto">SECURITY AUDIT</span>
+      </div>
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--sub);line-height:1.7;margin-bottom:12px">
+          Predmetni sistem projektovan je po principu višeslojne odbrane koja hakerske napade čini izuzetno teškim za izvođenje. Fizički sloj — kamere, senzori i rampe — povezan je žičanom lokalnom mrežom koja nije direktno izložena internetu. Zamena vizuelnih snimaka u prenosu zahtevala bi savršenu sinhronizaciju sa unapred određenim intervalima slanja i istovremeno sprečavanje legitimnog snimka, što je tehnički praktično neizvodivo. Čak i u slučaju uspešnog neovlašćenog otvaranja rampe, sistem će kroz T1/T2 analizu u roku od najviše 30 minuta detektovati anomaliju i forenzički evidentirati sve relevantne podatke. <b style="color:var(--text)">Najrealniji vektori napada ostaju softverski napadi na mrežni sloj</b> — koje sistem aktivno detektuje, blokira i evidentira u forenzičkom logu.
+        </p>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+          <div style="background:rgba(46,194,126,.08);border:1px solid rgba(46,194,126,.25);border-radius:8px;padding:10px">
+            <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Otporan</div>
+            <div style="font-size:11px;color:var(--sub);line-height:1.6">Fizički napadi na kamere i senzore · Zamena snimaka u prenosu · Hakovanje rampe bez detekcije</div>
+          </div>
+          <div style="background:rgba(240,168,50,.08);border:1px solid rgba(240,168,50,.25);border-radius:8px;padding:10px">
+            <div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Delimično ranjiv</div>
+            <div style="font-size:11px;color:var(--sub);line-height:1.6">DDoS na cloud server · Brute force na admin panel · Replay napadi na API</div>
+          </div>
+          <div style="background:rgba(232,72,74,.08);border:1px solid rgba(232,72,74,.25);border-radius:8px;padding:10px">
+            <div style="font-size:10px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Mitigacija</div>
+            <div style="font-size:11px;color:var(--sub);line-height:1.6">Offline-first arhitektura · JWT + HMAC autentifikacija · Rate limiting · IP blokiranje</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENARIO KARTICE -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+
+      <!-- NAPAD 1: Neovlašćena API komanda -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-dot" style="background:var(--red)"></div>
+          <div class="card-title">Napad 1 — Neovlašćena API komanda</div>
+        </div>
+        <div class="card-body">
+          <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:11px;color:var(--sub);line-height:1.6">
+            <b style="color:var(--text)">Scenario:</b> Napadač šalje HTTP POST zahtev direktno na <code style="color:var(--accent)">/api/barrier/command</code> bez validnog JWT tokena, pokušavajući da otvori ulaznu rampu bez prolaska kroz ANPR sistem.
+          </div>
+          <button class="btn btn-danger" style="width:100%;margin-bottom:10px" onclick="runAttack('api')">⚡ Simuliraj napad</button>
+          <div id="attack-api-result" style="display:none">
+            <div class="divider"></div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Forenzički log</div>
+            <div id="attack-api-log" style="max-height:160px;overflow-y:auto;background:var(--bg);border-radius:6px;padding:6px"></div>
+            <div id="attack-api-verdict" class="verdict" style="margin-top:8px"></div>
+            <div class="divider"></div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Analiza</div>
+            <div style="font-size:11px;color:var(--sub);line-height:1.6" id="attack-api-analysis"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- NAPAD 2: Replay napad -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-dot" style="background:var(--red)"></div>
+          <div class="card-title">Napad 2 — Replay napad na ANPR</div>
+        </div>
+        <div class="card-body">
+          <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:11px;color:var(--sub);line-height:1.6">
+            <b style="color:var(--text)">Scenario:</b> Napadač presretne legitimni ANPR zahtev tablice BG 123 AB i ponovo ga šalje 47 sekundi kasnije, pokušavajući da otvori rampu bez fizičkog prisustva vozila.
+          </div>
+          <button class="btn btn-danger" style="width:100%;margin-bottom:10px" onclick="runAttack('replay')">⚡ Simuliraj napad</button>
+          <div id="attack-replay-result" style="display:none">
+            <div class="divider"></div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Forenzički log</div>
+            <div id="attack-replay-log" style="max-height:160px;overflow-y:auto;background:var(--bg);border-radius:6px;padding:6px"></div>
+            <div id="attack-replay-verdict" class="verdict" style="margin-top:8px"></div>
+            <div class="divider"></div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Analiza</div>
+            <div style="font-size:11px;color:var(--sub);line-height:1.6" id="attack-replay-analysis"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- NAPAD 3: Brute force -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-dot" style="background:var(--red)"></div>
+          <div class="card-title">Napad 3 — Brute force na admin panel</div>
+        </div>
+        <div class="card-body">
+          <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:11px;color:var(--sub);line-height:1.6">
+            <b style="color:var(--text)">Scenario:</b> Napadač automatizovanim skriptom pokušava da pogodi admin lozinku, šaljući 847 zahteva za login u roku od 12 sekundi sa IP adrese <code style="color:var(--red)">185.220.101.47</code>.
+          </div>
+          <button class="btn btn-danger" style="width:100%;margin-bottom:10px" onclick="runAttack('brute')">⚡ Simuliraj napad</button>
+          <div id="attack-brute-result" style="display:none">
+            <div class="divider"></div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Forenzički log</div>
+            <div id="attack-brute-log" style="max-height:160px;overflow-y:auto;background:var(--bg);border-radius:6px;padding:6px"></div>
+            <div id="attack-brute-verdict" class="verdict" style="margin-top:8px"></div>
+            <div class="divider"></div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Analiza</div>
+            <div style="font-size:11px;color:var(--sub);line-height:1.6" id="attack-brute-analysis"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- NAPAD 4: DDoS -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-dot" style="background:var(--red)"></div>
+          <div class="card-title">Napad 4 — DDoS na cloud server</div>
+        </div>
+        <div class="card-body">
+          <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:11px;color:var(--sub);line-height:1.6">
+            <b style="color:var(--text)">Scenario:</b> Napadač pronalazi javnu IP adresu cloud servera DNS lookup-om i pokreće distribuirani napad sa 3.200 botova, generišući 48.000 zahteva u sekundi i čineći server nedostupnim.
+          </div>
+          <button class="btn btn-danger" style="width:100%;margin-bottom:10px" onclick="runAttack('ddos')">⚡ Simuliraj napad</button>
+          <div id="attack-ddos-result" style="display:none">
+            <div class="divider"></div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Forenzički log</div>
+            <div id="attack-ddos-log" style="max-height:160px;overflow-y:auto;background:var(--bg);border-radius:6px;padding:6px"></div>
+            <div id="attack-ddos-verdict" class="verdict" style="margin-top:8px"></div>
+            <div class="divider"></div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Analiza</div>
+            <div style="font-size:11px;color:var(--sub);line-height:1.6" id="attack-ddos-analysis"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /scenario kartice -->
+
+    <!-- ADMIN ALERT PANEL -->
+    <div class="card" id="admin-alert-panel" style="display:none;border-color:rgba(232,72,74,.4)">
+      <div class="card-head" style="background:rgba(232,72,74,.08)">
+        <div class="card-dot" style="background:var(--red);animation:pulse .5s ease-in-out infinite"></div>
+        <div class="card-title" style="color:var(--red)">Admin upozorenje — SIGURNOSNI INCIDENT</div>
+        <span class="tag tag-r" style="margin-left:auto" id="alert-time"></span>
+      </div>
+      <div class="card-body" id="admin-alert-body"></div>
+    </div>
+
+  </div>
+</div><!-- /view-attacks -->
+
+
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!-- VIEW 4: DETEKCIJA NAPADA NA MREŽU                      -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="view" id="view-attacks">
+  <div style="padding-top:14px">
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-head">
+        <div class="card-dot" style="background:var(--red)"></div>
+        <div class="card-title">Analiza ranjivosti sistema</div>
+        <span class="tag tag-r" style="margin-left:auto">SECURITY AUDIT</span>
+      </div>
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--sub);line-height:1.7;margin-bottom:12px">
+          Sistem je projektovan po principu višeslojne odbrane. Fizički sloj — kamere, senzori i rampe — povezan je žičanom lokalnom mrežom koja nije direktno izložena internetu. RPi se na internet povezuje direktno žičanom priključnicom na ISP infrastrukturu bez rutera kao međustanice, što eliminše dodatne tačke napada. Zamena vizuelnih snimaka u prenosu zahtevala bi savršenu sinhronizaciju sa TLS-enkriptovanim saobraćajem, što je praktično neizvodivo. Čak i uspešno neovlašćeno otvaranje rampe sistem detektuje kroz T1/T2 analizu u roku od 30 minuta. <b style="color:var(--text)">Najrealniji vektori napada ostaju softverski napadi na mrežni sloj</b> — koje sistem aktivno detektuje, blokira i evidentira u forenzičkom logu.
+        </p>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+          <div style="background:rgba(46,194,126,.08);border:1px solid rgba(46,194,126,.25);border-radius:8px;padding:10px">
+            <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Otporan</div>
+            <div style="font-size:11px;color:var(--sub);line-height:1.6">Fizički napadi na kamere · Zamena snimaka u TLS prenosu · Hakovanje rampe bez fizičkog upada</div>
+          </div>
+          <div style="background:rgba(240,168,50,.08);border:1px solid rgba(240,168,50,.25);border-radius:8px;padding:10px">
+            <div style="font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Delimično ranjiv</div>
+            <div style="font-size:11px;color:var(--sub);line-height:1.6">DDoS na cloud server · Brute force na admin panel · SSH napad na RPi</div>
+          </div>
+          <div style="background:rgba(232,72,74,.08);border:1px solid rgba(232,72,74,.25);border-radius:8px;padding:10px">
+            <div style="font-size:10px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Mitigacija</div>
+            <div style="font-size:11px;color:var(--sub);line-height:1.6">Offline-first arhitektura · JWT + HMAC · Rate limiting · SSH samo sa ključevima</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+
+      <!-- NAPAD 1 -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-dot" style="background:var(--red)"></div>
+          <div class="card-title">Napad 1 — Neovlašćena API komanda</div>
+        </div>
+        <div class="card-body">
+          <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--sub);line-height:1.6">
+            <b style="color:var(--text)">Scenario:</b> Napadač šalje HTTP POST na <code style="color:var(--accent)">/api/barrier/command</code> bez JWT tokena, pokušavajući da otvori rampu bez ANPR sistema.
+          </div>
+          <button class="btn btn-danger" style="width:100%;margin-bottom:10px" onclick="runAttack('api')">⚡ Simuliraj napad</button>
+          <div id="attack-api-result" style="display:none">
+            <div class="divider"></div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Forenzički log</div>
+            <div id="attack-api-log" style="max-height:150px;overflow-y:auto;background:var(--bg);border-radius:6px;padding:6px;margin-bottom:8px"></div>
+            <div id="attack-api-verdict" class="verdict" style="margin-top:8px"></div>
+            <div class="divider"></div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Analiza</div>
+            <div style="font-size:11px;color:var(--sub);line-height:1.7;margin-bottom:10px" id="attack-api-analysis"></div>
+            <div style="background:rgba(46,194,126,.07);border:1px solid rgba(46,194,126,.3);border-radius:8px;padding:10px">
+              <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">🔒 Realan scenario</div>
+              <div style="font-size:11px;color:var(--sub);line-height:1.7">Rampa je fizički povezana žičnom vezom direktno na RPi ivični računar putem GPIO relay modula — nije izložena mreži. Da bi softverski otvorio rampu, haker mora prvo da kompromituje sam RPi. RPi se nalazi u zaključanoj tehničkoj prostoriji — fizički upad je preduslov, a on sam ostavlja forenzički trag (kamera, alarm). Ovaj napad u praksi zahteva prethodni fizički upad, što ga čini krivičnim delom višeg reda pre nego što se uopšte dođe do rampe.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- NAPAD 2 -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-dot" style="background:var(--red)"></div>
+          <div class="card-title">Napad 2 — Replay napad na ANPR</div>
+        </div>
+        <div class="card-body">
+          <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--sub);line-height:1.6">
+            <b style="color:var(--text)">Scenario:</b> Napadač presretne legitimni ANPR zahtev i ponovo ga šalje 47 sekundi kasnije pokušavajući da otvori rampu bez vozila.
+          </div>
+          <button class="btn btn-danger" style="width:100%;margin-bottom:10px" onclick="runAttack('replay')">⚡ Simuliraj napad</button>
+          <div id="attack-replay-result" style="display:none">
+            <div class="divider"></div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Forenzički log</div>
+            <div id="attack-replay-log" style="max-height:150px;overflow-y:auto;background:var(--bg);border-radius:6px;padding:6px;margin-bottom:8px"></div>
+            <div id="attack-replay-verdict" class="verdict" style="margin-top:8px"></div>
+            <div class="divider"></div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Analiza</div>
+            <div style="font-size:11px;color:var(--sub);line-height:1.7;margin-bottom:10px" id="attack-replay-analysis"></div>
+            <div style="background:rgba(46,194,126,.07);border:1px solid rgba(46,194,126,.3);border-radius:8px;padding:10px">
+              <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">🔒 Realan scenario</div>
+              <div style="font-size:11px;color:var(--sub);line-height:1.7">Da bi presreo zahtev, haker mora da se postavi između RPi-ja i cloud servera. RPi se direktno žičnom priključnicom na ISP infrastrukturu — nema WiFi rutera kao tačke presretanja. Sav saobraćaj je TLS enkriptovan, dakle čak i da ima pristup kablu, vidi samo šifrovane podatke. Čak i da nekako dođe do plaintext zahteva, trostruka zaštita (timestamp 30s + idempotency key + induktivna petlja bez fizičkog vozila) čini uspeh praktično nemogućim.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- NAPAD 3 -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-dot" style="background:var(--red)"></div>
+          <div class="card-title">Napad 3 — Brute force na admin panel</div>
+        </div>
+        <div class="card-body">
+          <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--sub);line-height:1.6">
+            <b style="color:var(--text)">Scenario:</b> Automatizovana skripta šalje 847 login zahteva u 12 sekundi sa IP <code style="color:var(--red)">185.220.101.47</code>.
+          </div>
+          <button class="btn btn-danger" style="width:100%;margin-bottom:10px" onclick="runAttack('brute')">⚡ Simuliraj napad</button>
+          <div id="attack-brute-result" style="display:none">
+            <div class="divider"></div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Forenzički log</div>
+            <div id="attack-brute-log" style="max-height:150px;overflow-y:auto;background:var(--bg);border-radius:6px;padding:6px;margin-bottom:8px"></div>
+            <div id="attack-brute-verdict" class="verdict" style="margin-top:8px"></div>
+            <div class="divider"></div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Analiza</div>
+            <div style="font-size:11px;color:var(--sub);line-height:1.7;margin-bottom:10px" id="attack-brute-analysis"></div>
+            <div style="background:rgba(46,194,126,.07);border:1px solid rgba(46,194,126,.3);border-radius:8px;padding:10px">
+              <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">🔒 Realan scenario</div>
+              <div style="font-size:11px;color:var(--sub);line-height:1.7">Admin panel nije javno indeksiran — URL nije poznat bez insajderskog znanja. Sa rate limitingom od 5 pokušaja na 60 sekundi, probijanje lozinke od 12 karaktera trajalo bi statički milione godina. Uz dvofaktorsku autentifikaciju ovo postaje praktično nemoguće čak i uz kompromitovanu lozinku. Realna pretnja je insider napad — zaposleni koji već ima pristup.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- NAPAD 4 -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-dot" style="background:var(--red)"></div>
+          <div class="card-title">Napad 4 — DDoS na cloud server</div>
+        </div>
+        <div class="card-body">
+          <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--sub);line-height:1.6">
+            <b style="color:var(--text)">Scenario:</b> Botnet od 3.200 čvorova generiše 48.000 zahteva/s, čineći cloud server nedostupnim za legitimne korisnike.
+          </div>
+          <button class="btn btn-danger" style="width:100%;margin-bottom:10px" onclick="runAttack('ddos')">⚡ Simuliraj napad</button>
+          <div id="attack-ddos-result" style="display:none">
+            <div class="divider"></div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Forenzički log</div>
+            <div id="attack-ddos-log" style="max-height:150px;overflow-y:auto;background:var(--bg);border-radius:6px;padding:6px;margin-bottom:8px"></div>
+            <div id="attack-ddos-verdict" class="verdict" style="margin-top:8px"></div>
+            <div class="divider"></div>
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Analiza</div>
+            <div style="font-size:11px;color:var(--sub);line-height:1.7;margin-bottom:10px" id="attack-ddos-analysis"></div>
+            <div style="background:rgba(46,194,120,.07);border:1px solid rgba(46,194,126,.3);border-radius:8px;padding:10px">
+              <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">🔒 Realan scenario</div>
+              <div style="font-size:11px;color:var(--sub);line-height:1.7">Ovo je jedini napad koji ima realnog efekta — ali isključivo na mobilnu aplikaciju i web dashboard. Fizički parking prostor radi potpuno normalno zahvaljujući offline-first arhitekturi. Napadač postiže jedino to da korisnici privremeno ne mogu da vide stanje parkinga u aplikaciji. Svi događaji se lokalno čuvaju i sinhronizuju po povratku veze. Uz Cloudflare ili AWS Shield, čak i ovaj napad se automatski mitiguje.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ADMIN ALERT PANEL -->
+    <div class="card" id="admin-alert-panel" style="display:none;border-color:rgba(232,72,74,.4)">
+      <div class="card-head" style="background:rgba(232,72,74,.08)">
+        <div class="card-dot" style="background:var(--red);animation:pulse .5s ease-in-out infinite"></div>
+        <div class="card-title" style="color:var(--red)">Admin upozorenje — SIGURNOSNI INCIDENT</div>
+        <span class="tag tag-r" style="margin-left:auto" id="alert-time"></span>
+      </div>
+      <div class="card-body" id="admin-alert-body"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════
+   ATTACK SIMULATIONS
+════════════════════════════════════════════════════ */
+const ts_a = () => new Date().toTimeString().slice(0,8);
+const sleep_a = ms => new Promise(r=>setTimeout(r,ms));
+
+function aLog(elId, msg, type) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const row = document.createElement('div');
+  row.className = 'log-entry log-'+(type||'');
+  row.innerHTML = `<span class="log-ts">${ts_a()}</span><span class="log-msg">${msg}</span>`;
+  el.appendChild(row);
+  el.scrollTop = el.scrollHeight;
+}
+
+function showAdminAlert(title, details, body, actions) {
+  const panel = document.getElementById('admin-alert-panel');
+  const alertBody = document.getElementById('admin-alert-body');
+  const time = document.getElementById('alert-time');
+  panel.style.display = '';
+  time.textContent = ts_a();
+  alertBody.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+      <div style="font-size:32px">🚨</div>
+      <div>
+        <div style="font-size:14px;font-weight:700;color:var(--text)">${title}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">${details}</div>
+      </div>
+    </div>
+    <div style="background:var(--s2);border-radius:7px;padding:10px;font-size:11px;color:var(--sub);line-height:1.7;margin-bottom:12px">${body}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${actions}</div>`;
+  panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+async function runAttack(type) {
+  const res = document.getElementById('attack-'+type+'-result');
+  const log = document.getElementById('attack-'+type+'-log');
+  const ver = document.getElementById('attack-'+type+'-verdict');
+  const ana = document.getElementById('attack-'+type+'-analysis');
+  res.style.display=''; log.innerHTML='';
+  ver.className='verdict'; ver.textContent=''; ana.innerHTML='';
+  document.getElementById('admin-alert-panel').style.display='none';
+
+  if      (type==='api')    await runApiAttack(log.id, ver, ana);
+  else if (type==='replay') await runReplayAttack(log.id, ver, ana);
+  else if (type==='brute')  await runBruteAttack(log.id, ver, ana);
+  else if (type==='ddos')   await runDDoSAttack(log.id, ver, ana);
+}
+
+/* ── NAPAD 1: Neovlašćena API komanda ────────────────────────── */
+async function runApiAttack(logId, ver, ana) {
+  const ip='91.108.56.122';
+  aLog(logId,`INCOMING | POST /api/barrier/command | ip:${ip}`,'warn'); await sleep_a(500);
+  aLog(logId,`PAYLOAD  | {"command":"OPEN","barrier":"ENTRY_1"}`,'warn'); await sleep_a(500);
+  aLog(logId,`AUTH     | Authorization header: missing`,'err'); await sleep_a(400);
+  aLog(logId,`JWT      | token: null → INVALID`,'err'); await sleep_a(400);
+  aLog(logId,`RESPONSE | 401 Unauthorized | barrier: NOT OPENED`,'ok'); await sleep_a(400);
+  aLog(logId,`SEC_LOG  | unauthorized_barrier_cmd | ip:${ip} | saved`,'err'); await sleep_a(400);
+  aLog(logId,`ALERT    | admin@parking.rs | incident #SEC-001`,'err');
+  addLog(`SEC_ALERT | unauthorized_api | ip:${ip}`,'err','log-body');
+
+  ver.className='verdict verdict-err';
+  ver.innerHTML=`✕ NAPAD ODBIJEN — 401 Unauthorized · IP ${ip} evidentiran`;
+  ana.innerHTML=`<b style="color:var(--text)">Kako je izveden:</b> Direktan HTTP POST na API endpoint bez JWT tokena, koristeći alate poput curl-a ili Postman-a.<br><br>
+    <b style="color:var(--text)">Kako je detektovan:</b> Svaki zahtev na /api/barrier/command mora imati validan JWT token potpisan tajnim ključem. Middleware odbija zahtev pre izvršavanja ikakve logike.<br><br>
+    <b style="color:var(--text)">Forenzički trag:</b> IP, timestamp, payload i HTTP status upisani u security log. Nakon 5 pokušaja, IP se automatski blokira.`;
+
+  showAdminAlert(
+    'Pokušaj neovlašćenog otvaranja rampe',
+    `IP: ${ip} · ${ts_a()} · POST /api/barrier/command · 401`,
+    `Detektovan neovlašćen API poziv za otvaranje ulazne rampe bez autentifikacionog tokena. Zahtev je odbijen. IP adresa evidentirana u forenzičkom logu.`,
+    `<button class="btn btn-danger" style="font-size:11px" onclick="resolveAttack('api','block','${ip}')">🔒 Blokiraj IP na 24h</button>
+     <button class="btn btn-amber" style="font-size:11px" onclick="resolveAttack('api','watch','${ip}')">👁 Stavi pod nadzor</button>
+     <button class="btn" style="font-size:11px" onclick="resolveAttack('api','dismiss','${ip}')">✓ Zabeleži i zatvori</button>`
+  );
+}
+
+/* ── NAPAD 2: Replay napad ───────────────────────────────────── */
+async function runReplayAttack(logId, ver, ana) {
+  aLog(logId,`ORIGINAL | 09:14:02 | BG123AB | token:a3f8c2d1 | OPEN → OK`,'ok'); await sleep_a(600);
+  aLog(logId,`─── 47 sekundi kasnije — isti token ponovo ───`,''); await sleep_a(400);
+  aLog(logId,`REPLAY   | 09:14:49 | BG123AB | token:a3f8c2d1`,'warn'); await sleep_a(500);
+  aLog(logId,`IDEM_KEY | token:a3f8c2d1 | already_used | used_at:09:14:02`,'err'); await sleep_a(400);
+  aLog(logId,`TIMESTAMP| request_age:47s > max:30s → EXPIRED`,'err'); await sleep_a(400);
+  aLog(logId,`LOOP_CHK | induktivna petlja nije okidnula | no vehicle`,'err'); await sleep_a(400);
+  aLog(logId,`RESPONSE | 409 Conflict | token used | barrier: NOT OPENED`,'ok'); await sleep_a(400);
+  aLog(logId,`SEC_LOG  | replay_attack | token:a3f8c2d1 | saved`,'err'); await sleep_a(400);
+  aLog(logId,`ALERT    | admin@parking.rs | incident #SEC-002`,'err');
+  addLog(`SEC_ALERT | replay_attack | token:a3f8c2d1 | BG123AB`,'err','log-body');
+
+  ver.className='verdict verdict-err';
+  ver.innerHTML=`✕ REPLAY NAPAD DETEKTOVAN — token već iskorišćen · rampa nije otvorena`;
+  ana.innerHTML=`<b style="color:var(--text)">Kako je izveden:</b> Napadač je snimio legitiman ANPR zahtev i 47s kasnije ga ponovo poslao nadajući se da će sistem ponovo otvoriti rampu.<br><br>
+    <b style="color:var(--text)">Kako je detektovan:</b> Trostruka zaštita — (1) idempotency key: token se koristi samo jednom, (2) timestamp: zahtevi stariji od 30s se odbijaju, (3) induktivna petlja nije okidnula — nema fizičkog vozila.<br><br>
+    <b style="color:var(--text)">Forenzički trag:</b> Oba zahteva — legitiman i replay — upisana u log sa timestampovima za potpunu rekonstrukciju.`;
+
+  showAdminAlert(
+    'Replay napad detektovan',
+    `Token a3f8c2d1 · BG 123 AB · 09:14:49 · 409 Conflict`,
+    `Detektovan pokušaj ponovnog korišćenja ANPR tokena (BG 123 AB) koji je već iskorišćen u 09:14:02. Rampa nije otvorena. Token invalidiran.`,
+    `<button class="btn btn-danger" style="font-size:11px" onclick="resolveAttack('replay','invalidate','a3f8c2d1')">🗑 Invaliduj sve tokene vozila</button>
+     <button class="btn btn-amber" style="font-size:11px" onclick="resolveAttack('replay','investigate','BG123AB')">🔍 Istraži tablicu BG 123 AB</button>
+     <button class="btn" style="font-size:11px" onclick="resolveAttack('replay','dismiss','')">✓ Zabeleži i zatvori</button>`
+  );
+}
+
+/* ── NAPAD 3: Brute force ────────────────────────────────────── */
+async function runBruteAttack(logId, ver, ana) {
+  const ip='185.220.101.47';
+  for (let i=1; i<=5; i++) {
+    aLog(logId,`LOGIN_FAIL | ip:${ip} | admin | attempt:${i} | wrong_password`, i<4?'warn':'err');
+    await sleep_a(280);
+  }
+  aLog(logId,`RATE_LIMIT| ip:${ip} | 5 failures in 12s | THRESHOLD HIT`,'err'); await sleep_a(400);
+  aLog(logId,`IP_BLOCK  | ip:${ip} | duration:24h | auto-blocked`,'err'); await sleep_a(400);
+  aLog(logId,`SEC_LOG   | brute_force | ip:${ip} | 847 req/12s | saved`,'err'); await sleep_a(400);
+  aLog(logId,`ALERT     | admin@parking.rs | incident #SEC-003`,'err');
+  addLog(`SEC_ALERT | brute_force | ip:${ip} | blocked 24h`,'err','log-body');
+
+  ver.className='verdict verdict-err';
+  ver.innerHTML=`✕ BRUTE FORCE DETEKTOVAN — IP ${ip} blokiran 24h`;
+  ana.innerHTML=`<b style="color:var(--text)">Kako je izveden:</b> Automatizovana skripta (Hydra) generisala 847 login zahteva/12s, probajući kombinacije lozinki iz rečnika.<br><br>
+    <b style="color:var(--text)">Kako je detektovan:</b> Rate limiter: 5 neuspešnih pokušaja u 60s → automatsko IP blokiranje. Frekvencija 847 req/12s daleko premašuje normalno korisničko ponašanje.<br><br>
+    <b style="color:var(--text)">Forenzički trag:</b> Svaki pokušaj logovan sa timestampom i korisničkim imenom za potpunu rekonstrukciju napada.`;
+
+  showAdminAlert(
+    'Brute force napad blokiran',
+    `IP: ${ip} · 847 pokušaja/12s · blokiran 24h`,
+    `Detektovan automatizovani napad na admin panel. IP ${ip} automatski blokiran na 24 sata. Preporučena promena lozinke i aktivacija 2FA.`,
+    `<button class="btn btn-danger" style="font-size:11px" onclick="resolveAttack('brute','block','${ip}')">🔒 Blokiraj trajno</button>
+     <button class="btn btn-amber" style="font-size:11px" onclick="resolveAttack('brute','2fa','')">🛡 Aktiviraj 2FA</button>
+     <button class="btn btn-green" style="font-size:11px" onclick="resolveAttack('brute','pwd','')">🔑 Promeni lozinku</button>
+     <button class="btn" style="font-size:11px" onclick="resolveAttack('brute','dismiss','')">✓ Zatvori</button>`
+  );
+}
+
+/* ── NAPAD 4: DDoS ───────────────────────────────────────────── */
+async function runDDoSAttack(logId, ver, ana) {
+  aLog(logId,`TRAFFIC  | req/s: 1.240 | baseline: 45 | ANOMALY`,'warn'); await sleep_a(500);
+  aLog(logId,`TRAFFIC  | req/s: 12.800 | sources: 847 IPs`,'warn'); await sleep_a(400);
+  aLog(logId,`TRAFFIC  | req/s: 48.000 | botnet: 3.200 nodes | CRITICAL`,'err'); await sleep_a(500);
+  aLog(logId,`CLOUD    | DDoS protection triggered | scrubbing active`,'warn'); await sleep_a(400);
+  aLog(logId,`SERVER   | cloud API: DEGRADED | latency: 8.400ms`,'err'); await sleep_a(400);
+  aLog(logId,`EDGE     | cloud unreachable | → OFFLINE MODE`,'warn'); await sleep_a(400);
+  aLog(logId,`OFFLINE  | barrier: OK | sensors: OK | cameras: OK`,'ok'); await sleep_a(400);
+  aLog(logId,`OUTBOX   | 47 events queued for sync`,'info'); await sleep_a(400);
+  aLog(logId,`SEC_LOG  | ddos_attack | impact: cloud_only | saved`,'err'); await sleep_a(400);
+  aLog(logId,`ALERT    | admin@parking.rs | incident #SEC-004`,'err');
+  addLog(`SEC_ALERT | ddos | 48k_rps | offline_mode_active`,'err','log-body');
+  addLog(`OFFLINE_MODE | parking OK | 47 events queued`,'warn','log-body');
+
+  ver.className='verdict verdict-warn';
+  ver.innerHTML=`⚠ DDoS DETEKTOVAN — cloud degradiran · parking radi normalno u offline modu`;
+  ana.innerHTML=`<b style="color:var(--text)">Kako je izveden:</b> DNS lookup otkrio javnu IP cloud servera. Botnet od 3.200 čvorova generisao 48.000 req/s, čineći server nedostupnim.<br><br>
+    <b style="color:var(--text)">Kako je detektovan:</b> Traffic monitor detektovao anomaliju (1.240 vs. 45 req/s baseline). Cloud provider aktivirao automatski scrubbing.<br><br>
+    <b style="color:var(--text)">Ključna prednost:</b> Offline-first arhitektura — parking radi normalno. Jedini efekat: mobilna aplikacija privremeno nedostupna. Svi eventi se lokalno čuvaju i sinhronizuju po oporavku.`;
+
+  showAdminAlert(
+    'DDoS napad — sistem u offline modu',
+    `48.000 req/s · 3.200 botova · cloud degradiran`,
+    `Cloud server pod DDoS napadom. Parking sistem automatski prešao u offline mod — rampe, senzori i kamere rade normalno. Mobilna aplikacija privremeno nedostupna. 47 lokalnih događaja čeka sinhronizaciju.`,
+    `<button class="btn btn-danger" style="font-size:11px" onclick="resolveAttack('ddos','cdn','')">☁ Aktiviraj Cloudflare zaštitu</button>
+     <button class="btn btn-amber" style="font-size:11px" onclick="resolveAttack('ddos','scale','')">⚡ Skaliraj server kapacitet</button>
+     <button class="btn btn-green" style="font-size:11px" onclick="resolveAttack('ddos','sync','')">🔄 Prisilna sinhronizacija</button>
+     <button class="btn" style="font-size:11px" onclick="resolveAttack('ddos','dismiss','')">✓ Zatvori</button>`
+  );
+}
+
+/* ── RESOLVE AKCIJE — funkcionalna dugmad ────────────────────── */
+function resolveAttack(attack, action, param) {
+  const panel = document.getElementById('admin-alert-panel');
+  const body  = document.getElementById('admin-alert-body');
+  const logId = 'attack-'+attack+'-log';
+
+  const actions = {
+    // API napad
+    'api-block':    { msg:`IP_BLOCK | ${param} | blocked 24h | firewall rule added`, log:`IP ${param} blokiran na 24h · firewall pravilo dodato`, cls:'ok' },
+    'api-watch':    { msg:`WATCHLIST | ${param} | monitoring aktivan | alert on next request`, log:`IP ${param} pod pojačanim nadzorom`, cls:'warn' },
+    'api-dismiss':  { msg:`INCIDENT_CLOSED | #SEC-001 | logged | no further action`, log:`Incident #SEC-001 zatvoren i evidentiran`, cls:'info' },
+    // Replay
+    'replay-invalidate': { msg:`TOKEN_REVOKE | all tokens for BG123AB | invalidated | re-auth required`, log:`Svi tokeni za BG 123 AB invalidovani — re-autentifikacija potrebna`, cls:'warn' },
+    'replay-investigate':{ msg:`INVESTIGATION | BG123AB | session history pulled | admin review`, log:`Istraga pokrenuta za tablicu BG 123 AB — istorija sesija preuzeta`, cls:'info' },
+    'replay-dismiss':    { msg:`INCIDENT_CLOSED | #SEC-002 | logged`, log:`Incident #SEC-002 zatvoren`, cls:'info' },
+    // Brute force
+    'brute-block':  { msg:`IP_PERM_BLOCK | ${param} | permanent | ISP notified`, log:`IP ${param} trajno blokiran · ISP obavešten`, cls:'err' },
+    'brute-2fa':    { msg:`2FA_ENABLED | admin account | TOTP activated | backup codes generated`, log:`Dvofaktorska autentifikacija aktivirana za admin nalog`, cls:'ok' },
+    'brute-pwd':    { msg:`PASSWORD_RESET | admin | new policy: 16+ chars | complexity enforced`, log:`Admin lozinka promenjena · nova politika: 16+ karaktera`, cls:'ok' },
+    'brute-dismiss':{ msg:`INCIDENT_CLOSED | #SEC-003 | logged`, log:`Incident #SEC-003 zatvoren`, cls:'info' },
+    // DDoS
+    'ddos-cdn':     { msg:`CLOUDFLARE | enabled | Under Attack mode | scrubbing active`, log:`Cloudflare zaštita aktivirana · Under Attack mode uključen`, cls:'ok' },
+    'ddos-scale':   { msg:`AUTO_SCALE | cloud instances: 1→8 | load balancer updated`, log:`Server skaliran: 1→8 instanci · load balancer ažuriran`, cls:'ok' },
+    'ddos-sync':    { msg:`FORCE_SYNC | 47 events → cloud | sync complete`, log:`Prisilna sinhronizacija: 47 lokalnih događaja upisano u cloud`, cls:'ok' },
+    'ddos-dismiss': { msg:`INCIDENT_CLOSED | #SEC-004 | logged`, log:`Incident #SEC-004 zatvoren`, cls:'info' },
+  };
+
+  const key = attack+'-'+action;
+  const act = actions[key];
+  if (!act) return;
+
+  // Log u napad log
+  aLog(logId, `RESOLVED | ${act.msg}`, act.cls);
+  // Log u glavni ANPR log
+  addLog(`INCIDENT_RESOLVED | ${act.log}`, act.cls, 'log-body');
+
+  // Zatvori panel sa porukom
+  body.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0">
+      <div style="font-size:24px">✅</div>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--green)">Incident rešen</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${act.log}</div>
+      </div>
+      <button class="btn" style="margin-left:auto;font-size:11px" onclick="document.getElementById('admin-alert-panel').style.display='none'">✕ Zatvori</button>
+    </div>`;
+}
 </script>
 </body>
 </html>
